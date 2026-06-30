@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>沐曜 AI 客服系統</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,"Noto Sans TC","Microsoft JhengHei",sans-serif;background:#f5f5f5;color:#333;line-height:1.6}
+  .wrap{max-width:920px;margin:0 auto;padding:20px}
+  button{padding:9px 16px;border-radius:8px;font-size:14px;cursor:pointer;border:1px solid #ddd;background:#fff;font-family:inherit}
+  button:hover{background:#f5f5f5}
+  button.primary{background:#534AB7;color:#fff;border-color:#534AB7}
+  button.primary:hover{background:#3C3489}
+  button.mini{padding:6px 12px;font-size:13px}
+  /* 登入 */
+  .login{max-width:360px;margin:10vh auto;background:#fff;border:1px solid #e5e5e5;border-radius:14px;padding:28px}
+  .login h1{font-size:20px;margin-bottom:4px}
+  .login .s{font-size:13px;color:#888;margin-bottom:20px}
+  .login label{font-size:12px;color:#888;display:block;margin:12px 0 4px}
+  .login input{width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:8px;font-size:14px;font-family:inherit}
+  .login input:focus{outline:none;border-color:#7F77DD}
+  .login button{width:100%;margin-top:18px}
+  .err{color:#A32D2D;font-size:13px;margin-top:10px;min-height:18px}
+  /* 後台 */
+  .topbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+  .brand{font-size:18px;font-weight:500}
+  .brand .s{font-size:12px;color:#888;font-weight:400}
+  .user-box{display:flex;align-items:center;gap:10px;font-size:13px}
+  .avatar{width:30px;height:30px;border-radius:50%;background:#CECBF6;color:#26215C;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:500}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px}
+  .stat{background:#fff;border-radius:8px;padding:14px 16px;border:1px solid #eee}
+  .stat .l{font-size:12px;color:#888}
+  .stat .v{font-size:24px;font-weight:500;margin-top:4px}
+  .tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center}
+  .tab{font-size:13px;padding:6px 13px;border-radius:999px;border:1px solid #ddd;color:#666;cursor:pointer;background:#fff}
+  .tab.on{background:#534AB7;color:#fff;border-color:#534AB7}
+  .row{background:#fff;border:1px solid #eee;border-radius:10px;padding:14px 16px;margin-bottom:10px}
+  .row.warn{background:#fffaf0;border-color:#fae0b0}
+  .row-top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+  .shop{font-size:12px;padding:2px 8px;border-radius:6px;background:#f1efe8;color:#5f5e5a}
+  .buyer{font-size:12px;padding:2px 8px;border-radius:6px;background:#E6F1FB;color:#185FA5}
+  .bid{font-size:12px;color:#aaa;font-family:ui-monospace,monospace}
+  .copy{font-size:11px;padding:2px 8px;border-radius:6px;border:1px solid #ddd;background:#fff;cursor:pointer}
+  .copy:hover{background:#f0edff;border-color:#7F77DD}
+  .copy.copied{background:#E1F5EE;color:#0F6E56;border-color:#9FE1CB}
+  .q{font-size:14px;color:#333}
+  .meta{display:flex;align-items:center;gap:10px}
+  .time{font-size:12px;color:#aaa}
+  .st{font-size:12px;padding:3px 9px;border-radius:999px}
+  .st.auto_sent,.st.auto_holding{background:#E1F5EE;color:#0F6E56}
+  .st.pending{background:#FAC775;color:#633806}
+  .st.handling{background:#E6F1FB;color:#185FA5;display:inline-flex;align-items:center;gap:4px}
+  .st.done{background:#EAF3DE;color:#3B6D11}
+  .ans{font-size:13px;color:#777;margin-top:7px}
+  .reply-wrap{margin-top:10px;background:#f7f5ff;border:1px solid #e0daf5;border-radius:8px;padding:10px 12px}
+  .reply-lbl{font-size:12px;color:#534AB7;font-weight:500;margin-bottom:6px}
+  .reply{width:100%;min-height:150px;padding:11px 13px;border:1px solid #ccc;border-radius:6px;font-size:15px;font-family:inherit;line-height:1.7;resize:vertical;background:#fff}
+  .reply:focus{outline:none;border-color:#7F77DD}
+  .acts{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .foot{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;color:#aaa;font-size:12px;align-items:center}
+  .loading{text-align:center;color:#aaa;padding:40px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <!-- 登入 -->
+  <div id="loginView">
+    <div class="login">
+      <h1>沐曜 AI 客服系統</h1>
+      <div class="s">請用您的 Email 與密碼登入</div>
+      <label>Email</label>
+      <input id="email" type="email" placeholder="you@muyo.com.tw" onkeydown="if(event.key==='Enter')doLogin()">
+      <label>密碼</label>
+      <input id="pw" type="password" placeholder="密碼" onkeydown="if(event.key==='Enter')doLogin()">
+      <button class="primary" id="loginBtn" onclick="doLogin()">登入</button>
+      <div class="err" id="loginErr"></div>
+    </div>
+  </div>
+
+  <!-- 後台 -->
+  <div id="appView" style="display:none">
+    <div class="topbar">
+      <div class="brand">沐曜 AI 客服系統 <span class="s">· 24 小時雲端運作</span></div>
+      <div class="user-box">
+        <span class="avatar" id="avatar">?</span>
+        <span>登入中:<b id="curUser">-</b></span>
+        <button class="mini" onclick="loadAll()">重新整理</button>
+        <button class="mini" onclick="doLogout()">登出</button>
+      </div>
+    </div>
+    <div class="stats" id="stats"></div>
+    <div class="tabs" id="tabs"></div>
+    <div id="list"><div class="loading">載入中…</div></div>
+    <div class="foot" id="foot"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+// ===== 連到你的 Supabase =====
+const SUPABASE_URL = 'https://sgulsnbicbxeihoztswi.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_9tE1J2bmdhiGM4C9x0ig4g_Tx-5KRPJ';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let me = null;          // {id, name, role, company_id}
+let shops = [];
+let staffMap = {};      // id -> name
+let msgs = [];
+let currentShop = '全部';
+
+function esc(t){ const d=document.createElement('div'); d.textContent=t==null?'':t; return d.innerHTML; }
+
+// ---------- 登入 ----------
+async function doLogin(){
+  const email = document.getElementById('email').value.trim();
+  const pw = document.getElementById('pw').value;
+  const errEl = document.getElementById('loginErr');
+  const btn = document.getElementById('loginBtn');
+  errEl.textContent=''; btn.disabled=true; btn.textContent='登入中…';
+  const { error } = await sb.auth.signInWithPassword({ email, password: pw });
+  btn.disabled=false; btn.textContent='登入';
+  if(error){ errEl.textContent = '登入失敗:' + (error.message.includes('Invalid')?'帳號或密碼錯誤':error.message); return; }
+  await afterLogin();
+}
+async function doLogout(){ await sb.auth.signOut(); me=null; showLogin(); }
+function showLogin(){ document.getElementById('appView').style.display='none'; document.getElementById('loginView').style.display='block'; }
+function showApp(){ document.getElementById('loginView').style.display='none'; document.getElementById('appView').style.display='block'; }
+
+async function afterLogin(){
+  const { data:{ user } } = await sb.auth.getUser();
+  if(!user){ showLogin(); return; }
+  const { data: staff, error } = await sb.from('staff').select('*').eq('id', user.id).single();
+  if(error || !staff){
+    document.getElementById('loginErr').textContent = '這個帳號還沒被加入客服成員,請管理者先設定。';
+    await sb.auth.signOut(); showLogin(); return;
+  }
+  me = { id:user.id, name:staff.name, role:staff.role, company_id:staff.company_id };
+  showApp();
+  await loadAll();
+}
+
+// ---------- 載入資料 ----------
+async function loadAll(){
+  if(!me) return;
+  document.getElementById('curUser').textContent = me.name;
+  document.getElementById('avatar').textContent = me.name.charAt(0);
+  document.getElementById('list').innerHTML = '<div class="loading">載入中…</div>';
+
+  const [{ data: shopRows }, { data: staffRows }, { data: msgRows }] = await Promise.all([
+    sb.from('shops').select('*').eq('company_id', me.company_id).order('name'),
+    sb.from('staff').select('id,name').eq('company_id', me.company_id),
+    sb.from('messages').select('*').eq('company_id', me.company_id).order('received_at', { ascending:false }).limit(200),
+  ]);
+  shops = shopRows || [];
+  staffMap = {}; (staffRows||[]).forEach(s=>staffMap[s.id]=s.name);
+  msgs = msgRows || [];
+  render();
+}
+
+function shopName(id){ const s=shops.find(x=>x.id===id); return s?s.name:'—'; }
+
+function render(){
+  // 統計
+  const today = new Date().toISOString().slice(0,10);
+  const autoToday = msgs.filter(m=>(m.status==='auto_sent'||m.status==='auto_holding') && (m.received_at||'').slice(0,10)===today).length;
+  const pending = msgs.filter(m=>m.status==='pending').length;
+  document.getElementById('stats').innerHTML =
+    stat('今日 AI 自動回覆', autoToday) +
+    stat('待客服處理', pending, pending>0?'#BA7517':'') +
+    stat('連線賣場', shops.length) +
+    stat('客服成員', Object.keys(staffMap).length);
+
+  // 賣場分頁
+  let tabs = tab('全部', msgs.length);
+  shops.forEach(s=>{ tabs += tab(s.name, msgs.filter(m=>m.shop_id===s.id).length, s.id); });
+  document.getElementById('tabs').innerHTML = tabs;
+
+  // 訊息列表
+  let list = msgs;
+  if(currentShop!=='全部'){ list = msgs.filter(m=>m.shop_id===currentShop); }
+  document.getElementById('list').innerHTML = list.length
+    ? list.map(rowHtml).join('')
+    : '<div class="row" style="text-align:center;color:#aaa">這裡目前沒有訊息 ✨</div>';
+
+  document.getElementById('foot').innerHTML = '資料即時存於雲端資料庫 · 重開不會消失。目前為「自家測試」階段,接上蝦皮後訊息會自動進來。';
+}
+function stat(l,v,color){ return `<div class="stat"><div class="l">${l}</div><div class="v" style="color:${color||'#333'}">${v}</div></div>`; }
+function tab(name,n,id){ const key=id||name; const on=currentShop===key?'on':''; return `<span class="tab ${on}" onclick="selShop('${key}')">${esc(name)} ${n}</span>`; }
+function selShop(s){ currentShop=s; render(); }
+
+function rowHtml(m){
+  let stHtml, acts='';
+  const stLabel = {auto_sent:'已自動回覆', auto_holding:'已自動回覆', pending:'待客服處理', handling:'處理中', done:'已回覆'}[m.status]||m.status;
+  if(m.status==='auto_sent'||m.status==='auto_holding'){ stHtml=`<span class="st ${m.status}">${stLabel}</span>`; }
+  else if(m.status==='done'){ stHtml=`<span class="st done">已回覆 · ${esc(staffMap[m.handler_id]||'')}</span>`; }
+  else if(m.status==='handling'){
+    stHtml=`<span class="st handling">👤 ${esc(staffMap[m.handler_id]||'某人')} 處理中</span>`;
+    if(m.handler_id===me.id){
+      acts=`<div class="reply-wrap">
+        <div class="reply-lbl">✨ AI 幫你擬的草稿(可直接改,或自己重打):</div>
+        <textarea class="reply" id="reply-${m.id}">${esc(m.ai_draft||'')}</textarea>
+        <div class="acts">
+          <button class="mini primary" onclick="sendReply('${m.id}')">送出給客人</button>
+          <button class="mini" onclick="release('${m.id}')">放開(交給別人)</button>
+        </div>
+      </div>`;
+    } else {
+      acts=`<div class="acts" style="color:#aaa;font-size:13px">由 ${esc(staffMap[m.handler_id]||'其他同事')} 處理中</div>`;
+    }
+  } else { // pending
+    stHtml=`<span class="st pending">待客服處理</span>`;
+    acts=`<div class="acts"><button class="mini primary" onclick="claim('${m.id}')">我來處理</button></div>`;
+  }
+  const warn = m.status==='pending'?'warn':'';
+  return `<div class="row ${warn}">
+    <div class="row-top">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span class="shop">${esc(shopName(m.shop_id))}</span>
+        <span class="buyer">👤 ${esc(m.buyer_name||'買家')}</span>
+        ${m.buyer_id?`<span class="bid">ID: ${esc(m.buyer_id)}</span><button class="copy" onclick="copyId('${esc(m.buyer_id)}',this)">複製 ID</button>`:''}
+        <span class="q">${esc(m.customer_message)}</span>
+      </div>
+      <div class="meta"><span class="time">${fmtTime(m.received_at)}</span>${stHtml}</div>
+    </div>
+    ${m.reply_text?`<div class="ans">已回覆:「${esc(m.reply_text)}」</div>`:(m.status!=='handling'&&m.ai_draft?`<div class="ans">AI 回:${esc(m.ai_draft)}</div>`:'')}
+    ${acts}
+  </div>`;
+}
+function fmtTime(t){ if(!t) return ''; const d=new Date(t); return d.toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}); }
+
+// ---------- 動作(寫回資料庫)----------
+async function claim(id){
+  const { error } = await sb.from('messages').update({ status:'handling', handler_id:me.id }).eq('id', id);
+  if(error){ alert('操作失敗:'+error.message); return; }
+  await loadAll();
+}
+async function release(id){
+  const { error } = await sb.from('messages').update({ status:'pending', handler_id:null }).eq('id', id);
+  if(error){ alert('操作失敗:'+error.message); return; }
+  await loadAll();
+}
+async function sendReply(id){
+  const box = document.getElementById('reply-'+id);
+  const text = (box?box.value:'').trim();
+  if(!text){ alert('回覆內容不能空白'); return; }
+  const { error } = await sb.from('messages').update({ status:'done', handler_id:me.id, reply_text:text, handled_at:new Date().toISOString() }).eq('id', id);
+  if(error){ alert('送出失敗:'+error.message); return; }
+  // 註:正式接上蝦皮後,這裡會同時把回覆送回買家的蝦皮聊聊。
+  await loadAll();
+}
+
+function copyId(text,btn){
+  if(!text) return;
+  const done=()=>{ const o=btn.textContent; btn.textContent='已複製 ✓'; btn.classList.add('copied'); setTimeout(()=>{btn.textContent=o;btn.classList.remove('copied');},1200); };
+  if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(done).catch(()=>fb()); } else { fb(); }
+  function fb(){ const ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');done();}catch(e){prompt('複製 ID:',text);} document.body.removeChild(ta); }
+}
+
+// ---------- 啟動:檢查是否已登入 ----------
+(async ()=>{
+  const { data:{ session } } = await sb.auth.getSession();
+  if(session){ await afterLogin(); } else { showLogin(); }
+})();
+</script>
+</body>
+</html>
