@@ -86,6 +86,7 @@
         <span class="avatar" id="avatar">?</span>
         <span>登入中:<b id="curUser">-</b></span>
         <button class="mini" onclick="loadAll()">重新整理</button>
+        <span id="autoDot" style="font-size:12px;color:#0F6E56">● 自動更新中</span>
         <button class="mini" onclick="doLogout()">登出</button>
       </div>
     </div>
@@ -108,6 +109,8 @@ let shops = [];
 let staffMap = {};      // id -> name
 let msgs = [];
 let currentShop = '全部';
+let autoTimer = null;        // 自動刷新計時器
+const AUTO_SECONDS = 15;     // 每幾秒自動刷新一次
 
 function esc(t){ const d=document.createElement('div'); d.textContent=t==null?'':t; return d.innerHTML; }
 
@@ -123,7 +126,7 @@ async function doLogin(){
   if(error){ errEl.textContent = '登入失敗:' + (error.message.includes('Invalid')?'帳號或密碼錯誤':error.message); return; }
   await afterLogin();
 }
-async function doLogout(){ await sb.auth.signOut(); me=null; showLogin(); }
+async function doLogout(){ stopAutoRefresh(); await sb.auth.signOut(); me=null; showLogin(); }
 function showLogin(){ document.getElementById('appView').style.display='none'; document.getElementById('loginView').style.display='block'; }
 function showApp(){ document.getElementById('loginView').style.display='none'; document.getElementById('appView').style.display='block'; }
 
@@ -138,6 +141,27 @@ async function afterLogin(){
   me = { id:user.id, name:staff.name, role:staff.role, company_id:staff.company_id };
   showApp();
   await loadAll();
+  startAutoRefresh();     // 登入後開始每 15 秒自動刷新
+}
+
+// ---------- 自動刷新 ----------
+// 判斷使用者是不是正在打字回覆(游標停在某個回覆框裡),
+// 如果是,就先跳過這次自動刷新,免得把打到一半的內容洗掉。
+function isTyping(){
+  const el = document.activeElement;
+  return el && el.classList && el.classList.contains('reply');
+}
+function startAutoRefresh(){
+  stopAutoRefresh();
+  autoTimer = setInterval(()=>{
+    if(!me) return;              // 沒登入就不刷
+    if(document.hidden) return;  // 分頁在背景就不刷(省流量)
+    if(isTyping()) return;       // 正在打字就不刷(保護內容)
+    loadAll();
+  }, AUTO_SECONDS * 1000);
+}
+function stopAutoRefresh(){
+  if(autoTimer){ clearInterval(autoTimer); autoTimer = null; }
 }
 
 // ---------- 載入資料 ----------
@@ -183,7 +207,7 @@ function render(){
     ? list.map(rowHtml).join('')
     : '<div class="row" style="text-align:center;color:#aaa">這裡目前沒有訊息 ✨</div>';
 
-  document.getElementById('foot').innerHTML = '資料即時存於雲端資料庫 · 重開不會消失。目前為「自家測試」階段,接上蝦皮後訊息會自動進來。';
+  document.getElementById('foot').innerHTML = `資料即時存於雲端資料庫 · 每 ${AUTO_SECONDS} 秒自動更新(打字回覆時會暫停,以免內容被洗掉) · 蝦皮訊息會自動進來。`;
 }
 function stat(l,v,color){ return `<div class="stat"><div class="l">${l}</div><div class="v" style="color:${color||'#333'}">${v}</div></div>`; }
 function tab(name,n,id){ const key=id||name; const on=currentShop===key?'on':''; return `<span class="tab ${on}" onclick="selShop('${key}')">${esc(name)} ${n}</span>`; }
@@ -256,6 +280,11 @@ function copyId(text,btn){
   if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(done).catch(()=>fb()); } else { fb(); }
   function fb(){ const ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');done();}catch(e){prompt('複製 ID:',text);} document.body.removeChild(ta); }
 }
+
+// 切回這個分頁時,立刻刷新一次(不用等 15 秒)
+document.addEventListener('visibilitychange', ()=>{
+  if(!document.hidden && me && !isTyping()){ loadAll(); }
+});
 
 // ---------- 啟動:檢查是否已登入 ----------
 (async ()=>{
