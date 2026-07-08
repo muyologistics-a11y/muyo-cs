@@ -112,6 +112,7 @@
 // ===== 連到你的 Supabase =====
 const SUPABASE_URL = 'https://jwuuxsapnghzxmslyafp.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_dhUdtJyzK1sdUudxtZMYyg_mYWC12h1';
+const BACKEND = 'https://muyo-cs-backend.vercel.app';   // 後端(送訊 API)
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let me = null;          // {id, name, role, company_id}
@@ -314,11 +315,11 @@ function convHtml(c){
   else if(c.status==='handling'){
     stHtml=`<span class="st handling">👤 ${esc(staffMap[c.handler_id]||'某人')} 處理中</span>`;
     if(c.handler_id===me.id){
-      acts=`<div class="reply-wrap">
+      acts=`<div class="reply-wrap" id="reply-wrap-${c.key}">
         <div class="reply-lbl">✨ AI 幫你擬的草稿(可直接改,或自己重打):</div>
         <textarea class="reply" id="reply-${c.key}">${esc(c.ai_draft||'')}</textarea>
         <div class="acts">
-          <button class="mini primary" onclick="sendReply('${c.key}')">送出給客人</button>
+          <button class="mini primary send-btn" onclick="sendReply('${c.key}')">送出給客人</button>
           <button class="mini" onclick="release('${c.key}')">放開(交給別人)</button>
         </div>
       </div>`;
@@ -396,17 +397,51 @@ async function sendReply(key){
   const box = document.getElementById('reply-'+key);
   const text = (box?box.value:'').trim();
   if(!text){ alert('回覆內容不能空白'); return; }
+
+  // 找出這個賣場的蝦皮 shop_id、對話 id、買家 id(送訊 API 要用)
+  const shopRow = shops.find(s=>s.id===c.shop_id);
+  const shopeeShopId = shopRow ? shopRow.shopee_shop_id : null;
+  const convId = c.convId || null;
+  const toId = c.buyer_id || null;
+  if(!shopeeShopId){ alert('這個賣場沒有蝦皮 shop_id,無法送訊(可能未正規授權)'); return; }
+
+  // 送出中:先鎖住按鈕避免重複點
+  const btn = document.querySelector(`#reply-wrap-${key} .send-btn`);
+  if(btn){ btn.disabled=true; btn.textContent='送出中…'; }
+
+  let sendOk=false, sendErr='';
+  try{
+    const resp = await fetch(BACKEND + '/api/send-reply', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({
+        shopee_shop_id: shopeeShopId,
+        conversation_id: convId,
+        to_id: toId,
+        message: text,
+      }),
+    });
+    const data = await resp.json();
+    if(data.ok){ sendOk=true; }
+    else { sendErr = data.error || '未知錯誤'; }
+  }catch(e){ sendErr = String(e.message||e); }
+
+  if(btn){ btn.disabled=false; btn.textContent='送出給客人'; }
+
+  if(!sendOk){
+    // 送蝦皮失敗 → 不標記已回覆,讓客服知道沒送出去
+    alert('⚠️ 送到蝦皮失敗,訊息「沒有」送給客人:\n'+sendErr+'\n\n(對話狀態維持不變,你可以改用蝦皮後台回)');
+    return;
+  }
+
+  // 送成功 → 標記整段已回覆
   const ids = convMsgIds(c);
-  // 整段對話標記為已回覆;回覆內容記在「最後一則」訊息上(方便日後追溯)
   const lastId = c.latest.id;
   const now = new Date().toISOString();
-  // 先把整段設為 done + 記錄處理人
   const r1 = await sb.from('messages').update({ status:'done', handler_id:me.id, handled_at:now }).in('id', ids);
-  if(r1.error){ alert('送出失敗:'+r1.error.message); return; }
-  // 再把回覆文字寫在最後一則
+  if(r1.error){ alert('已送給客人,但更新狀態失敗:'+r1.error.message); }
   const r2 = await sb.from('messages').update({ reply_text:text }).eq('id', lastId);
-  if(r2.error){ alert('送出失敗:'+r2.error.message); return; }
-  // 註:正式接上蝦皮後,這裡會同時把回覆送回買家的蝦皮聊聊。
+  if(r2.error){ alert('已送給客人,但記錄回覆失敗:'+r2.error.message); }
   await loadAll();
 }
 
