@@ -53,6 +53,16 @@
   .st.handling{background:#E6F1FB;color:#185FA5;display:inline-flex;align-items:center;gap:4px}
   .st.done{background:#EAF3DE;color:#3B6D11}
   .ans{font-size:13px;color:#777;margin-top:7px}
+  .cnt{font-size:11px;padding:2px 8px;border-radius:999px;background:#EDE9FB;color:#534AB7;font-weight:500}
+  .latest-line{margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .toggle{font-size:12px;padding:3px 10px;border-radius:6px;border:1px solid #ddd;background:#fafafa;color:#666;cursor:pointer}
+  .toggle:hover{background:#f0edff;border-color:#7F77DD;color:#534AB7}
+  .bubbles{margin-top:10px;border-top:1px dashed #eee;padding-top:10px;display:flex;flex-direction:column;gap:7px}
+  .bubble{display:flex;gap:10px;align-items:baseline;font-size:14px}
+  .bubble .btime{font-size:11px;color:#aaa;flex-shrink:0;min-width:78px}
+  .bubble .btext{color:#333}
+  .bubble.reply-bubble .btext{color:#0F6E56;background:#eafaf3;padding:4px 10px;border-radius:8px}
+  .bubble.reply-bubble .btime{color:#0F6E56}
   .reply-wrap{margin-top:10px;background:#f7f5ff;border:1px solid #e0daf5;border-radius:8px;padding:10px 12px}
   .reply-lbl{font-size:12px;color:#534AB7;font-weight:500;margin-bottom:6px}
   .reply{width:100%;min-height:150px;padding:11px 13px;border:1px solid #ccc;border-radius:6px;font-size:15px;font-family:inherit;line-height:1.7;resize:vertical;background:#fff}
@@ -108,6 +118,8 @@ let me = null;          // {id, name, role, company_id}
 let shops = [];
 let staffMap = {};      // id -> name
 let msgs = [];
+let convs = [];               // 分組後的對話陣列
+let expandedConvs = {};       // 記住哪些對話被展開(點開看全部)
 let currentShop = '全部';
 let autoTimer = null;        // 自動刷新計時器
 const AUTO_SECONDS = 15;     // 每幾秒自動刷新一次
@@ -179,97 +191,221 @@ async function loadAll(){
   shops = shopRows || [];
   staffMap = {}; (staffRows||[]).forEach(s=>staffMap[s.id]=s.name);
   msgs = msgRows || [];
+  convs = groupIntoConversations(msgs);
   render();
+}
+
+// ============================================================
+//  把「單筆訊息」依 conversation_id + 12 小時規則,合併成「對話」
+//  規則(佳芬 7/7 定):
+//   - 同一個 conversation_id,相鄰訊息間隔 <= 12 小時 → 同一段對話
+//   - 間隔 > 12 小時 → 拆成新的一段對話
+//   - 沒有 conversation_id 的,用 買家+賣場 當備援分組鍵
+// ============================================================
+const GAP_HOURS = 12;
+function groupIntoConversations(list){
+  // msgs 已是 received_at 由新到舊;先複製一份由「舊到新」方便分段
+  const asc = [...list].sort((a,b)=> new Date(a.received_at) - new Date(b.received_at));
+  const buckets = {};   // key -> 該對話鍵目前累積的訊息
+  const result = [];
+
+  for(const m of asc){
+    const convKey = m.conversation_id || `nk_${m.shop_id}_${m.buyer_id||m.buyer_name||'?'}`;
+    const groupKey = `${m.shop_id}__${convKey}`;
+    const prev = buckets[groupKey];
+    let openConv = prev && prev._open;
+
+    // 若與上一則間隔超過 12 小時 → 視為新對話
+    if(openConv){
+      const gapMs = new Date(m.received_at) - new Date(openConv.lastAt);
+      if(gapMs > GAP_HOURS*3600*1000){ openConv = null; }
+    }
+    if(!openConv){
+      openConv = {
+        key: groupKey + '__' + m.received_at,   // 這一「段」的唯一鍵
+        convId: m.conversation_id || null,
+        shop_id: m.shop_id,
+        buyer_id: m.buyer_id,
+        buyer_name: m.buyer_name,
+        items: [],
+        lastAt: m.received_at,
+      };
+      result.push(openConv);
+      buckets[groupKey] = { _open: openConv };
+    }
+    openConv.items.push(m);
+    openConv.lastAt = m.received_at;
+  }
+
+  // 每段對話:算出「顯示狀態」「最新訊息」「最後時間」,並依最後時間新到舊排序
+  for(const c of result){
+    c.items.sort((a,b)=> new Date(a.received_at) - new Date(b.received_at)); // 段內舊到新
+    c.latest = c.items[c.items.length-1];
+    c.firstAt = c.items[0].received_at;
+    c.lastAt = c.latest.received_at;
+    c.count = c.items.length;
+    c.status = convStatus(c);           // 整段對話的狀態(見下)
+    c.handler_id = pickHandler(c);      // 誰在處理/誰回的
+    c.reply_text = lastReplyText(c);    // 若已回覆,最後一則回覆內容
+    c.ai_draft = c.latest.ai_draft || '';
+  }
+  result.sort((a,b)=> new Date(b.lastAt) - new Date(a.lastAt));  // 對話新到舊
+  return result;
+}
+
+// 整段對話的狀態:只要有任何一筆「待處理」→ 整段待處理(要提醒);
+// 否則若有人正在處理 → 處理中;全部回覆完 → 依 AI/人工顯示已回覆/已自動回覆。
+function convStatus(c){
+  const ss = c.items.map(m=>m.status);
+  if(ss.includes('pending')) return 'pending';
+  if(ss.includes('handling')) return 'handling';
+  if(ss.every(s=> s==='auto_sent' || s==='auto_holding')) return 'auto_sent';
+  if(ss.includes('done')) return 'done';
+  return c.latest.status;
+}
+function pickHandler(c){
+  // 取最後一筆有 handler 的
+  for(let i=c.items.length-1;i>=0;i--){ if(c.items[i].handler_id) return c.items[i].handler_id; }
+  return null;
+}
+function lastReplyText(c){
+  for(let i=c.items.length-1;i>=0;i--){ if(c.items[i].reply_text) return c.items[i].reply_text; }
+  return null;
 }
 
 function shopName(id){ const s=shops.find(x=>x.id===id); return s?s.name:'—'; }
 
 function render(){
-  // 統計
+  // 統計(以對話為單位)
   const today = new Date().toISOString().slice(0,10);
-  const autoToday = msgs.filter(m=>(m.status==='auto_sent'||m.status==='auto_holding') && (m.received_at||'').slice(0,10)===today).length;
-  const pending = msgs.filter(m=>m.status==='pending').length;
+  const autoToday = convs.filter(c=>c.status==='auto_sent' && (c.lastAt||'').slice(0,10)===today).length;
+  const pending = convs.filter(c=>c.status==='pending').length;
   document.getElementById('stats').innerHTML =
     stat('今日 AI 自動回覆', autoToday) +
-    stat('待客服處理', pending, pending>0?'#BA7517':'') +
+    stat('待處理對話', pending, pending>0?'#BA7517':'') +
     stat('連線賣場', shops.length) +
     stat('客服成員', Object.keys(staffMap).length);
 
-  // 賣場分頁
-  let tabs = tab('全部', msgs.length);
-  shops.forEach(s=>{ tabs += tab(s.name, msgs.filter(m=>m.shop_id===s.id).length, s.id); });
+  // 賣場分頁(數字改成對話數)
+  let tabs = tab('全部', convs.length);
+  shops.forEach(s=>{ tabs += tab(s.name, convs.filter(c=>c.shop_id===s.id).length, s.id); });
   document.getElementById('tabs').innerHTML = tabs;
 
-  // 訊息列表
-  let list = msgs;
-  if(currentShop!=='全部'){ list = msgs.filter(m=>m.shop_id===currentShop); }
+  // 對話列表
+  let list = convs;
+  if(currentShop!=='全部'){ list = convs.filter(c=>c.shop_id===currentShop); }
   document.getElementById('list').innerHTML = list.length
-    ? list.map(rowHtml).join('')
-    : '<div class="row" style="text-align:center;color:#aaa">這裡目前沒有訊息 ✨</div>';
+    ? list.map(convHtml).join('')
+    : '<div class="row" style="text-align:center;color:#aaa">這裡目前沒有對話 ✨</div>';
 
-  document.getElementById('foot').innerHTML = `資料即時存於雲端資料庫 · 每 ${AUTO_SECONDS} 秒自動更新(打字回覆時會暫停,以免內容被洗掉) · 蝦皮訊息會自動進來。`;
+  document.getElementById('foot').innerHTML = `資料即時存於雲端資料庫 · 每 ${AUTO_SECONDS} 秒自動更新(打字回覆時會暫停,以免內容被洗掉) · 同一客人 12 小時內的訊息會合併成一段對話。`;
 }
 function stat(l,v,color){ return `<div class="stat"><div class="l">${l}</div><div class="v" style="color:${color||'#333'}">${v}</div></div>`; }
 function tab(name,n,id){ const key=id||name; const on=currentShop===key?'on':''; return `<span class="tab ${on}" onclick="selShop('${key}')">${esc(name)} ${n}</span>`; }
 function selShop(s){ currentShop=s; render(); }
+function toggleConv(key){ expandedConvs[key]=!expandedConvs[key]; render(); }
 
-function rowHtml(m){
+function convHtml(c){
+  const stLabel = {auto_sent:'已自動回覆', pending:'待處理', handling:'處理中', done:'已回覆'}[c.status]||c.status;
   let stHtml, acts='';
-  const stLabel = {auto_sent:'已自動回覆', auto_holding:'已自動回覆', pending:'待客服處理', handling:'處理中', done:'已回覆'}[m.status]||m.status;
-  if(m.status==='auto_sent'||m.status==='auto_holding'){ stHtml=`<span class="st ${m.status}">${stLabel}</span>`; }
-  else if(m.status==='done'){ stHtml=`<span class="st done">已回覆 · ${esc(staffMap[m.handler_id]||'')}</span>`; }
-  else if(m.status==='handling'){
-    stHtml=`<span class="st handling">👤 ${esc(staffMap[m.handler_id]||'某人')} 處理中</span>`;
-    if(m.handler_id===me.id){
+
+  if(c.status==='auto_sent'){ stHtml=`<span class="st auto_sent">已自動回覆</span>`; }
+  else if(c.status==='done'){ stHtml=`<span class="st done">已回覆 · ${esc(staffMap[c.handler_id]||'')}</span>`; }
+  else if(c.status==='handling'){
+    stHtml=`<span class="st handling">👤 ${esc(staffMap[c.handler_id]||'某人')} 處理中</span>`;
+    if(c.handler_id===me.id){
       acts=`<div class="reply-wrap">
         <div class="reply-lbl">✨ AI 幫你擬的草稿(可直接改,或自己重打):</div>
-        <textarea class="reply" id="reply-${m.id}">${esc(m.ai_draft||'')}</textarea>
+        <textarea class="reply" id="reply-${c.key}">${esc(c.ai_draft||'')}</textarea>
         <div class="acts">
-          <button class="mini primary" onclick="sendReply('${m.id}')">送出給客人</button>
-          <button class="mini" onclick="release('${m.id}')">放開(交給別人)</button>
+          <button class="mini primary" onclick="sendReply('${c.key}')">送出給客人</button>
+          <button class="mini" onclick="release('${c.key}')">放開(交給別人)</button>
         </div>
       </div>`;
     } else {
-      acts=`<div class="acts" style="color:#aaa;font-size:13px">由 ${esc(staffMap[m.handler_id]||'其他同事')} 處理中</div>`;
+      acts=`<div class="acts" style="color:#aaa;font-size:13px">由 ${esc(staffMap[c.handler_id]||'其他同事')} 處理中</div>`;
     }
   } else { // pending
-    stHtml=`<span class="st pending">待客服處理</span>`;
-    acts=`<div class="acts"><button class="mini primary" onclick="claim('${m.id}')">我來處理</button></div>`;
+    stHtml=`<span class="st pending">待處理</span>`;
+    acts=`<div class="acts"><button class="mini primary" onclick="claim('${c.key}')">我來處理</button></div>`;
   }
-  const warn = m.status==='pending'?'warn':'';
+
+  // 對話裡的訊息:預設收起,只顯示最新一句;點「展開」看全部
+  const isOpen = !!expandedConvs[c.key];
+  const many = c.count > 1;
+  let bubbles = '';
+  if(isOpen){
+    bubbles = c.items.map(m=>{
+      const isReply = false;
+      return `<div class="bubble">
+        <span class="btime">${fmtTime(m.received_at)}</span>
+        <span class="btext">${esc(m.customer_message)}</span>
+      </div>`;
+    }).join('');
+    // 若已回覆,附上回覆內容
+    if(c.reply_text){ bubbles += `<div class="bubble reply-bubble"><span class="btime">已回覆</span><span class="btext">${esc(c.reply_text)}</span></div>`; }
+  }
+
+  const toggleBtn = many
+    ? `<button class="toggle" onclick="toggleConv('${c.key}')">${isOpen?'收起':`展開全部 ${c.count} 則`} ${isOpen?'▲':'▼'}</button>`
+    : '';
+
+  const warn = c.status==='pending'?'warn':'';
+  const latestText = esc(c.latest.customer_message);
+
   return `<div class="row ${warn}">
     <div class="row-top">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <span class="shop">${esc(shopName(m.shop_id))}</span>
-        <span class="buyer">👤 ${esc(m.buyer_name||'買家')}</span>
-        ${m.buyer_id?`<span class="bid">ID: ${esc(m.buyer_id)}</span><button class="copy" onclick="copyId('${esc(m.buyer_id)}',this)">複製 ID</button>`:''}
-        <span class="q">${esc(m.customer_message)}</span>
+        <span class="shop">${esc(shopName(c.shop_id))}</span>
+        <span class="buyer">👤 ${esc(c.buyer_name||'買家')}</span>
+        ${c.buyer_id?`<span class="bid">ID: ${esc(c.buyer_id)}</span><button class="copy" onclick="copyId('${esc(c.buyer_id)}',this)">複製 ID</button>`:''}
+        ${many?`<span class="cnt">${c.count} 則</span>`:''}
       </div>
-      <div class="meta"><span class="time">${fmtTime(m.received_at)}</span>${stHtml}</div>
+      <div class="meta"><span class="time">${fmtTime(c.lastAt)}</span>${stHtml}</div>
     </div>
-    ${m.reply_text?`<div class="ans">已回覆:「${esc(m.reply_text)}」</div>`:(m.status!=='handling'&&m.ai_draft?`<div class="ans">AI 回:${esc(m.ai_draft)}</div>`:'')}
+    <div class="latest-line"><span class="q">${latestText}</span> ${toggleBtn}</div>
+    ${isOpen?`<div class="bubbles">${bubbles}</div>`:''}
+    ${(!isOpen && c.reply_text)?`<div class="ans">已回覆:「${esc(c.reply_text)}」</div>`:''}
+    ${(!isOpen && c.status==='auto_sent' && c.ai_draft)?`<div class="ans">AI 回:${esc(c.ai_draft)}</div>`:''}
     ${acts}
   </div>`;
 }
 function fmtTime(t){ if(!t) return ''; const d=new Date(t); return d.toLocaleString('zh-TW',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}); }
 
-// ---------- 動作(寫回資料庫)----------
-async function claim(id){
-  const { error } = await sb.from('messages').update({ status:'handling', handler_id:me.id }).eq('id', id);
+// ---------- 動作(以「對話」為單位,寫回資料庫)----------
+// 傳進來的是對話的 key;找出那段對話所有訊息的 id 一起更新。
+function convByKey(key){ return convs.find(c=>c.key===key); }
+function convMsgIds(c){ return c.items.map(m=>m.id); }
+
+async function claim(key){
+  const c = convByKey(key); if(!c) return;
+  const ids = convMsgIds(c);
+  const { error } = await sb.from('messages').update({ status:'handling', handler_id:me.id }).in('id', ids);
   if(error){ alert('操作失敗:'+error.message); return; }
   await loadAll();
 }
-async function release(id){
-  const { error } = await sb.from('messages').update({ status:'pending', handler_id:null }).eq('id', id);
+async function release(key){
+  const c = convByKey(key); if(!c) return;
+  const ids = convMsgIds(c);
+  const { error } = await sb.from('messages').update({ status:'pending', handler_id:null }).in('id', ids);
   if(error){ alert('操作失敗:'+error.message); return; }
   await loadAll();
 }
-async function sendReply(id){
-  const box = document.getElementById('reply-'+id);
+async function sendReply(key){
+  const c = convByKey(key); if(!c) return;
+  const box = document.getElementById('reply-'+key);
   const text = (box?box.value:'').trim();
   if(!text){ alert('回覆內容不能空白'); return; }
-  const { error } = await sb.from('messages').update({ status:'done', handler_id:me.id, reply_text:text, handled_at:new Date().toISOString() }).eq('id', id);
-  if(error){ alert('送出失敗:'+error.message); return; }
+  const ids = convMsgIds(c);
+  // 整段對話標記為已回覆;回覆內容記在「最後一則」訊息上(方便日後追溯)
+  const lastId = c.latest.id;
+  const now = new Date().toISOString();
+  // 先把整段設為 done + 記錄處理人
+  const r1 = await sb.from('messages').update({ status:'done', handler_id:me.id, handled_at:now }).in('id', ids);
+  if(r1.error){ alert('送出失敗:'+r1.error.message); return; }
+  // 再把回覆文字寫在最後一則
+  const r2 = await sb.from('messages').update({ reply_text:text }).eq('id', lastId);
+  if(r2.error){ alert('送出失敗:'+r2.error.message); return; }
   // 註:正式接上蝦皮後,這裡會同時把回覆送回買家的蝦皮聊聊。
   await loadAll();
 }
