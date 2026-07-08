@@ -419,6 +419,7 @@ async function sendReply(key, btn){
         conversation_id: convId,
         to_id: toId,
         message: text,
+        region: 'TW',
       }),
     });
     const data = await resp.json();
