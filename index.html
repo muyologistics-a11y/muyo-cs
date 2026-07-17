@@ -178,9 +178,21 @@
         <div style="font-size:11px;color:#aaa;margin-top:6px">開啟後,不管排程設定,自動送出一律暫停,核准的內容會留在佇列裡等你恢復。</div>
       </div>
 
+      <div class="pause-row">
+        <label style="margin-top:0">AI 生成草稿設定</label>
+        <div style="font-size:11px;color:#aaa;margin-bottom:8px">選擇要用哪家 AI 生成回覆草稿,金鑰要自己去該平台申請、自己開通付費,不會經過我們。</div>
+        <select id="aiProvider" onchange="updateAiApplyLink()" style="width:100%;padding:9px 11px;border:1px solid #ddd;border-radius:8px;font-size:14px;font-family:inherit">
+          <option value="openai">OpenAI(GPT)</option>
+          <option value="gemini">Google Gemini</option>
+        </select>
+        <label>API 金鑰</label>
+        <input type="password" id="aiApiKey" placeholder="貼上你自己申請的 API 金鑰" style="width:100%;padding:9px 11px;border:1px solid #ddd;border-radius:8px;font-size:14px;font-family:inherit">
+        <div style="font-size:11px;color:#aaa;margin-top:6px" id="aiApplyLink"></div>
+      </div>
+
       <div class="foot-btns">
         <button class="mini" onclick="closeAutosendModal()">關閉</button>
-        <button class="mini primary" onclick="saveAutosendSettings()">儲存時段設定</button>
+        <button class="mini primary" onclick="saveAutosendSettings()">儲存設定</button>
       </div>
     </div>
   </div>
@@ -572,10 +584,23 @@ function openAutosendModal(){
   document.getElementById('asWeekdayStart').value = (s && s.weekday_start) || '18:00';
   document.getElementById('asWeekdayEnd').value = (s && s.weekday_end) || '09:00';
   document.getElementById('asWeekendActive').checked = s ? !!s.weekend_active : true;
+  document.getElementById('aiProvider').value = (s && s.ai_provider) || 'openai';
+  document.getElementById('aiApiKey').value = (s && s.ai_api_key) || '';
+  updateAiApplyLink();
   updatePauseBtn();
   document.getElementById('autosendModal').style.display = 'flex';
 }
 function closeAutosendModal(){ document.getElementById('autosendModal').style.display = 'none'; }
+
+function updateAiApplyLink(){
+  const provider = document.getElementById('aiProvider').value;
+  const el = document.getElementById('aiApplyLink');
+  if(provider === 'gemini'){
+    el.innerHTML = '還沒有金鑰？<a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">前往 Google AI Studio 申請</a>（申請後記得自己開通付費,免費額度很容易不夠用）';
+  } else {
+    el.innerHTML = '還沒有金鑰？<a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">前往 OpenAI 申請</a>（申請後記得自己到 Billing 開通付費）';
+  }
+}
 
 function updatePauseBtn(){
   const btn = document.getElementById('asPauseBtn');
@@ -601,11 +626,13 @@ async function saveAutosendSettings(){
   const weekday_start = document.getElementById('asWeekdayStart').value || '18:00';
   const weekday_end = document.getElementById('asWeekdayEnd').value || '09:00';
   const weekend_active = document.getElementById('asWeekendActive').checked;
+  const ai_provider = document.getElementById('aiProvider').value;
+  const ai_api_key = document.getElementById('aiApiKey').value.trim() || null;
   const { error } = await sb.from('autosend_settings')
-    .update({ weekday_start, weekday_end, weekend_active })
+    .update({ weekday_start, weekday_end, weekend_active, ai_provider, ai_api_key })
     .eq('id', autosendSettings.id);
   if(error){ alert('儲存失敗:'+error.message); return; }
-  Object.assign(autosendSettings, { weekday_start, weekday_end, weekend_active });
+  Object.assign(autosendSettings, { weekday_start, weekday_end, weekend_active, ai_provider, ai_api_key });
   renderAutosendBadge();
   closeAutosendModal();
 }
