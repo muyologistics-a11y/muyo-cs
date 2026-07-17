@@ -51,6 +51,7 @@
   .st.auto_sent,.st.auto_holding{background:#E1F5EE;color:#0F6E56}
   .st.pending{background:#FAC775;color:#633806}
   .st.handling{background:#E6F1FB;color:#185FA5;display:inline-flex;align-items:center;gap:4px}
+  .st.approved_to_send{background:#FDEFD3;color:#8A5A00}
   .st.done{background:#EAF3DE;color:#3B6D11}
   .ans{font-size:13px;color:#777;margin-top:7px}
   .cnt{font-size:11px;padding:2px 8px;border-radius:999px;background:#EDE9FB;color:#534AB7;font-weight:500}
@@ -70,6 +71,34 @@
   .acts{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
   .foot{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;color:#aaa;font-size:12px;align-items:center}
   .loading{text-align:center;color:#aaa;padding:40px}
+  /* 自動送出狀態/設定 */
+  .as-badge{font-size:12px;padding:4px 10px;border-radius:999px;display:inline-flex;align-items:center;gap:5px;cursor:pointer;border:1px solid transparent}
+  .as-badge.on{background:#E1F5EE;color:#0F6E56}
+  .as-badge.off{background:#f1efe8;color:#5f5e5a}
+  .as-badge.paused{background:#FBE7E7;color:#A32D2D}
+  .as-badge.warn{background:#FDEFD3;color:#8A5A00}
+  .modal-mask{position:fixed;inset:0;background:rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;z-index:50}
+  .modal{background:#fff;border-radius:12px;padding:22px 24px;width:360px;max-width:92vw}
+  .modal h2{font-size:16px;margin-bottom:14px}
+  .modal label{font-size:12px;color:#888;display:block;margin:12px 0 4px}
+  .modal input[type=time]{padding:8px 10px;border:1px solid #ddd;border-radius:8px;font-size:14px;font-family:inherit}
+  .modal .row2{display:flex;align-items:center;gap:10px}
+  .modal .chk-row{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13px}
+  .modal .pause-row{margin-top:16px;padding-top:14px;border-top:1px solid #eee}
+  .modal .foot-btns{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+  /* FAQ 管理 */
+  .faq-search{width:100%;padding:9px 11px;border:1px solid #ddd;border-radius:8px;font-size:14px;font-family:inherit;margin-bottom:14px}
+  .faq-search:focus{outline:none;border-color:#7F77DD}
+  .faq-card{border-left:4px solid #CECBF6}
+  .faq-card .top{display:flex;gap:8px;align-items:center;margin-bottom:6px;flex-wrap:wrap}
+  .faq-card .cat{width:130px;padding:8px 10px;border:1px solid #ddd;border-radius:7px;font-size:13px;font-family:inherit}
+  .faq-card label{font-size:12px;color:#888;display:block;margin:8px 0 3px}
+  .faq-card textarea{width:100%;padding:9px 11px;border:1px solid #ddd;border-radius:7px;font-size:14px;font-family:inherit;line-height:1.6;resize:vertical}
+  .faq-card textarea:focus{outline:none;border-color:#7F77DD}
+  .faq-card .qbox{min-height:64px}
+  .faq-card .abox{min-height:90px}
+  .faq-card .row-btns{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center}
+  .faq-saved{color:#0F6E56;font-size:12px}
 </style>
 </head>
 <body>
@@ -93,6 +122,8 @@
     <div class="topbar">
       <div class="brand">沐曜 AI 客服系統 <span class="s">· 24 小時雲端運作</span></div>
       <div class="user-box">
+        <span class="as-badge off" id="asBadge" onclick="openAutosendModal()">⚪ 載入中…</span>
+        <button class="mini" onclick="switchView('faq')">📚 FAQ 管理</button>
         <span class="avatar" id="avatar">?</span>
         <span>登入中:<b id="curUser">-</b></span>
         <button class="mini" onclick="loadAll()">重新整理</button>
@@ -100,10 +131,58 @@
         <button class="mini" onclick="doLogout()">登出</button>
       </div>
     </div>
-    <div class="stats" id="stats"></div>
-    <div class="tabs" id="tabs"></div>
-    <div id="list"><div class="loading">載入中…</div></div>
-    <div class="foot" id="foot"></div>
+    <div id="convView">
+      <div class="stats" id="stats"></div>
+      <div class="tabs" id="tabs"></div>
+      <div id="list"><div class="loading">載入中…</div></div>
+      <div class="foot" id="foot"></div>
+    </div>
+
+    <!-- FAQ 管理 -->
+    <div id="faqView" style="display:none">
+      <div class="topbar">
+        <span class="badge" id="faqCount">0 筆</span>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="mini primary" onclick="addNewFaq()">＋ 新增 FAQ</button>
+          <button class="mini" onclick="loadFaqs()">重新整理</button>
+          <button class="mini" onclick="switchView('conv')">← 返回對話列表</button>
+        </div>
+      </div>
+      <input class="faq-search" id="faqSearch" placeholder="🔍 搜尋(分類、問法或答案關鍵字)" oninput="renderFaqList()">
+      <div id="faqList"></div>
+    </div>
+  </div>
+
+  <!-- 自動送出排程設定 -->
+  <div id="autosendModal" class="modal-mask" style="display:none" onclick="if(event.target===this)closeAutosendModal()">
+    <div class="modal">
+      <h2>⚙️ 自動送出排程設定</h2>
+      <div style="font-size:12px;color:#888">點「送出給客人」核准後,實際送出的動作交給你電腦上跑的自動化腳本,依這裡設定的時段運作。</div>
+
+      <label>平日(週一~週五)自動運作時段</label>
+      <div class="row2">
+        <input type="time" id="asWeekdayStart">
+        <span style="color:#aaa">～(隔天)</span>
+        <input type="time" id="asWeekdayEnd">
+      </div>
+      <div style="font-size:11px;color:#aaa;margin-top:4px">例如 18:00～09:00,代表平日晚上到隔天早上自動運作,白天客服上班時段不運作。</div>
+
+      <div class="chk-row">
+        <input type="checkbox" id="asWeekendActive">
+        <label style="margin:0" for="asWeekendActive">六日全天自動運作</label>
+      </div>
+
+      <div class="pause-row">
+        <label style="margin-top:0">緊急總開關</label>
+        <button class="mini" id="asPauseBtn" style="width:100%" onclick="toggleManualPause()">—</button>
+        <div style="font-size:11px;color:#aaa;margin-top:6px">開啟後,不管排程設定,自動送出一律暫停,核准的內容會留在佇列裡等你恢復。</div>
+      </div>
+
+      <div class="foot-btns">
+        <button class="mini" onclick="closeAutosendModal()">關閉</button>
+        <button class="mini primary" onclick="saveAutosendSettings()">儲存時段設定</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -118,12 +197,16 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 let me = null;          // {id, name, role, company_id}
 let shops = [];
 let staffMap = {};      // id -> name
+let autosendSettings = null;  // autosend_settings 那一列(排程/暫停/心跳)
 let msgs = [];
 let convs = [];               // 分組後的對話陣列
 let expandedConvs = {};       // 記住哪些對話被展開(點開看全部)
 let currentShop = '全部';
+let statusFilter = null;     // 點「待處理對話」統計卡時設成 'pending',只看待處理的對話
 let autoTimer = null;        // 自動刷新計時器
 const AUTO_SECONDS = 15;     // 每幾秒自動刷新一次
+let faqs = [];                // FAQ 管理分頁的資料
+let currentView = 'conv';     // 'conv'(對話列表) 或 'faq'(FAQ 管理)
 
 function esc(t){ const d=document.createElement('div'); d.textContent=t==null?'':t; return d.innerHTML; }
 
@@ -164,12 +247,18 @@ function isTyping(){
   const el = document.activeElement;
   return el && el.classList && el.classList.contains('reply');
 }
+// 是不是有對話正被展開查看中(點了「展開全部」),如果是,自動刷新會把畫面重繪、
+// 使用者要重新捲動/重新點開才看得到,體感上就像被「收合」了一樣 —— 先跳過這次自動刷新。
+function hasExpandedConv(){
+  return Object.values(expandedConvs).some(v => v);
+}
 function startAutoRefresh(){
   stopAutoRefresh();
   autoTimer = setInterval(()=>{
     if(!me) return;              // 沒登入就不刷
     if(document.hidden) return;  // 分頁在背景就不刷(省流量)
     if(isTyping()) return;       // 正在打字就不刷(保護內容)
+    if(hasExpandedConv()) return; // 有對話正被展開查看中,先不要打斷
     loadAll();
   }, AUTO_SECONDS * 1000);
 }
@@ -184,16 +273,19 @@ async function loadAll(){
   document.getElementById('avatar').textContent = me.name.charAt(0);
   document.getElementById('list').innerHTML = '<div class="loading">載入中…</div>';
 
-  const [{ data: shopRows }, { data: staffRows }, { data: msgRows }] = await Promise.all([
+  const [{ data: shopRows }, { data: staffRows }, { data: msgRows }, { data: asRows }] = await Promise.all([
     sb.from('shops').select('*').eq('company_id', me.company_id).order('name'),
     sb.from('staff').select('id,name').eq('company_id', me.company_id),
     sb.from('messages').select('*').eq('company_id', me.company_id).order('received_at', { ascending:false }).limit(200),
+    sb.from('autosend_settings').select('*').eq('company_id', me.company_id).limit(1),
   ]);
   shops = shopRows || [];
   staffMap = {}; (staffRows||[]).forEach(s=>staffMap[s.id]=s.name);
   msgs = msgRows || [];
   convs = groupIntoConversations(msgs);
+  autosendSettings = (asRows && asRows[0]) || null;
   render();
+  renderAutosendBadge();
 }
 
 // ============================================================
@@ -260,6 +352,7 @@ function convStatus(c){
   const ss = c.items.map(m=>m.status);
   if(ss.includes('pending')) return 'pending';
   if(ss.includes('handling')) return 'handling';
+  if(ss.includes('approved_to_send')) return 'approved_to_send';
   if(ss.every(s=> s==='auto_sent' || s==='auto_holding')) return 'auto_sent';
   if(ss.includes('done')) return 'done';
   return c.latest.status;
@@ -283,26 +376,33 @@ function render(){
   const pending = convs.filter(c=>c.status==='pending').length;
   document.getElementById('stats').innerHTML =
     stat('今日 AI 自動回覆', autoToday) +
-    stat('待處理對話', pending, pending>0?'#BA7517':'') +
+    stat('待處理對話', pending, pending>0?'#BA7517':'', 'togglePendingFilter()', statusFilter==='pending') +
     stat('連線賣場', shops.length) +
     stat('客服成員', Object.keys(staffMap).length);
 
   // 賣場分頁(數字改成對話數)
   let tabs = tab('全部', convs.length);
   shops.forEach(s=>{ tabs += tab(s.name, convs.filter(c=>c.shop_id===s.id).length, s.id); });
+  if(statusFilter==='pending'){ tabs += `<span class="tab on" style="background:#BA7517;border-color:#BA7517" onclick="togglePendingFilter()">✕ 只看待處理</span>`; }
   document.getElementById('tabs').innerHTML = tabs;
 
   // 對話列表
   let list = convs;
   if(currentShop!=='全部'){ list = convs.filter(c=>c.shop_id===currentShop); }
+  if(statusFilter==='pending'){ list = list.filter(c=>c.status==='pending'); }
+  const emptyMsg = statusFilter==='pending' ? '目前沒有待處理的對話 🎉' : '這裡目前沒有對話 ✨';
   document.getElementById('list').innerHTML = list.length
     ? list.map(convHtml).join('')
-    : '<div class="row" style="text-align:center;color:#aaa">這裡目前沒有對話 ✨</div>';
+    : `<div class="row" style="text-align:center;color:#aaa">${emptyMsg}</div>`;
 
-  document.getElementById('foot').innerHTML = `資料即時存於雲端資料庫 · 每 ${AUTO_SECONDS} 秒自動更新(打字回覆時會暫停,以免內容被洗掉) · 同一客人 12 小時內的訊息會合併成一段對話。`;
+  document.getElementById('foot').innerHTML = `資料即時存於雲端資料庫 · 每 ${AUTO_SECONDS} 秒自動更新(打字回覆或展開查看對話時會暫停,以免內容被洗掉/畫面被收合) · 同一客人 12 小時內的訊息會合併成一段對話。`;
 }
-function stat(l,v,color){ return `<div class="stat"><div class="l">${l}</div><div class="v" style="color:${color||'#333'}">${v}</div></div>`; }
+function stat(l,v,color,onclick,active){
+  const clickable = onclick ? `style="cursor:pointer;${active?'box-shadow:0 0 0 2px #BA7517 inset;':''}" onclick="${onclick}"` : '';
+  return `<div class="stat" ${clickable}><div class="l">${l}</div><div class="v" style="color:${color||'#333'}">${v}</div></div>`;
+}
 function tab(name,n,id){ const key=id||name; const on=currentShop===key?'on':''; return `<span class="tab ${on}" onclick="selShop('${key}')">${esc(name)} ${n}</span>`; }
+function togglePendingFilter(){ statusFilter = statusFilter==='pending' ? null : 'pending'; render(); }
 function selShop(s){ currentShop=s; render(); }
 function toggleConv(key){ expandedConvs[key]=!expandedConvs[key]; render(); }
 
@@ -312,6 +412,14 @@ function convHtml(c){
 
   if(c.status==='auto_sent'){ stHtml=`<span class="st auto_sent">已自動回覆</span>`; }
   else if(c.status==='done'){ stHtml=`<span class="st done">已回覆 · ${esc(staffMap[c.handler_id]||'')}</span>`; }
+  else if(c.status==='approved_to_send'){
+    stHtml=`<span class="st approved_to_send">⏳ 已核准,排隊自動送出中</span>`;
+    acts=`<div class="acts" style="color:#aaa;font-size:13px;display:block">
+      <div>已核准內容:「${esc(c.reply_text||'')}」</div>
+      <div style="margin-top:4px">系統會在約 20~30 秒內自動送出給客人,不是立刻送出,請不用重複點擊。</div>
+      <button class="mini" style="margin-top:6px" onclick="claim('${c.key}')">撤回改編輯</button>
+    </div>`;
+  }
   else if(c.status==='handling'){
     stHtml=`<span class="st handling">👤 ${esc(staffMap[c.handler_id]||'某人')} 處理中</span>`;
     if(c.handler_id===me.id){
@@ -392,6 +500,9 @@ async function release(key){
   if(error){ alert('操作失敗:'+error.message); return; }
   await loadAll();
 }
+// ★ 這個函式「不會」直接送到蝦皮 —— 蝦皮官方送訊 API 不開放給台灣開發者。
+//   點下去只是把核准後的內容寫回資料庫、標記 status='approved_to_send',
+//   真正送出的動作交給另一支獨立跑的瀏覽器自動化腳本輪詢處理。
 async function sendReply(key, btn){
   const c = convByKey(key); if(!c) return;
   // 用 CSS.escape 讓含冒號/點的 key 也能安全查詢
@@ -399,50 +510,15 @@ async function sendReply(key, btn){
   const text = (box?box.value:'').trim();
   if(!text){ alert('回覆內容不能空白'); return; }
 
-  // 找出這個賣場的蝦皮 shop_id、對話 id、買家 id(送訊 API 要用)
-  const shopRow = shops.find(s=>s.id===c.shop_id);
-  const shopeeShopId = shopRow ? shopRow.shopee_shop_id : null;
-  const convId = c.convId || null;
-  const toId = c.buyer_id || null;
-  if(!shopeeShopId){ alert('這個賣場沒有蝦皮 shop_id,無法送訊(可能未正規授權)'); return; }
+  if(btn){ btn.disabled=true; btn.textContent='處理中…'; }
 
-  // 送出中:直接用傳進來的按鈕鎖住,避免重複點(不用選擇器,免得 key 含冒號出錯)
-  if(btn){ btn.disabled=true; btn.textContent='送出中…'; }
-
-  let sendOk=false, sendErr='';
-  try{
-    const resp = await fetch(BACKEND + '/api/send-reply', {
-      method:'POST',
-      headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({
-        shopee_shop_id: shopeeShopId,
-        conversation_id: convId,
-        to_id: toId,
-        message: text,
-        region: 'TW',
-      }),
-    });
-    const data = await resp.json();
-    if(data.ok){ sendOk=true; }
-    else { sendErr = data.error || '未知錯誤'; }
-  }catch(e){ sendErr = String(e.message||e); }
-
-  if(btn){ btn.disabled=false; btn.textContent='送出給客人'; }
-
-  if(!sendOk){
-    // 送蝦皮失敗 → 不標記已回覆,讓客服知道沒送出去
-    alert('⚠️ 送到蝦皮失敗,訊息「沒有」送給客人:\n'+sendErr+'\n\n(對話狀態維持不變,你可以改用蝦皮後台回)');
-    return;
-  }
-
-  // 送成功 → 標記整段已回覆
   const ids = convMsgIds(c);
   const lastId = c.latest.id;
-  const now = new Date().toISOString();
-  const r1 = await sb.from('messages').update({ status:'done', handler_id:me.id, handled_at:now }).in('id', ids);
-  if(r1.error){ alert('已送給客人,但更新狀態失敗:'+r1.error.message); }
+  const r1 = await sb.from('messages').update({ status:'approved_to_send', handler_id:me.id }).in('id', ids);
+  if(btn){ btn.disabled=false; btn.textContent='送出給客人'; }
+  if(r1.error){ alert('核准失敗:'+r1.error.message); return; }
   const r2 = await sb.from('messages').update({ reply_text:text }).eq('id', lastId);
-  if(r2.error){ alert('已送給客人,但記錄回覆失敗:'+r2.error.message); }
+  if(r2.error){ alert('已核准,但記錄回覆內容失敗:'+r2.error.message); }
   await loadAll();
 }
 
@@ -453,9 +529,183 @@ function copyId(text,btn){
   function fb(){ const ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');done();}catch(e){prompt('複製 ID:',text);} document.body.removeChild(ta); }
 }
 
+// ============================================================
+//  自動送出排程狀態/設定
+//  ★ isWithinSchedule 的判斷邏輯要跟 muyo-shopee-autosend/send-worker.js
+//    裡的同名函式保持一致,這裡只是給客服「預覽現在該不該運作」用,
+//    實際擋不擋送出是腳本那邊自己再判斷一次。
+// ============================================================
+function isWithinSchedule(s, now){
+  now = now || new Date();
+  if(!s) return true;
+  if(s.manual_pause) return false;
+  const day = now.getDay();
+  if(day===0 || day===6) return !!s.weekend_active;
+  const toMin = t => { const [h,m] = String(t||'0:0').split(':').map(Number); return h*60+(m||0); };
+  const cur = now.getHours()*60 + now.getMinutes();
+  const start = toMin(s.weekday_start), end = toMin(s.weekday_end);
+  if(start===end) return true;
+  if(start<end) return cur>=start && cur<end;
+  return cur>=start || cur<end;
+}
+
+function renderAutosendBadge(){
+  const el = document.getElementById('asBadge');
+  if(!el) return;
+  const s = autosendSettings;
+  if(!s){ el.className='as-badge off'; el.textContent='⚪ 尚未設定'; return; }
+
+  if(s.manual_pause){ el.className='as-badge paused'; el.textContent='🔴 已手動暫停'; return; }
+
+  const scheduledOn = isWithinSchedule(s);
+  const heartbeatAgeMs = s.last_heartbeat_at ? (Date.now() - new Date(s.last_heartbeat_at).getTime()) : Infinity;
+  const heartbeatStale = heartbeatAgeMs > 90*1000; // 超過 90 秒沒回報,視為腳本可能沒在跑
+
+  if(!scheduledOn){ el.className='as-badge off'; el.textContent='⚪ 排程外,暫停中'; return; }
+  if(heartbeatStale){ el.className='as-badge warn'; el.textContent='🟡 該運作但腳本沒回應,請檢查'; return; }
+  el.className='as-badge on'; el.textContent='🟢 自動送出運作中';
+}
+setInterval(renderAutosendBadge, 5000); // 每 5 秒重畫一次狀態(不用等下次整個 loadAll)
+
+function openAutosendModal(){
+  const s = autosendSettings;
+  document.getElementById('asWeekdayStart').value = (s && s.weekday_start) || '18:00';
+  document.getElementById('asWeekdayEnd').value = (s && s.weekday_end) || '09:00';
+  document.getElementById('asWeekendActive').checked = s ? !!s.weekend_active : true;
+  updatePauseBtn();
+  document.getElementById('autosendModal').style.display = 'flex';
+}
+function closeAutosendModal(){ document.getElementById('autosendModal').style.display = 'none'; }
+
+function updatePauseBtn(){
+  const btn = document.getElementById('asPauseBtn');
+  const paused = autosendSettings ? !!autosendSettings.manual_pause : false;
+  btn.textContent = paused ? '▶ 恢復自動送出' : '⏸ 立即暫停自動送出';
+  btn.style.background = paused ? '#0F6E56' : '#A32D2D';
+  btn.style.color = '#fff';
+  btn.style.borderColor = paused ? '#0F6E56' : '#A32D2D';
+}
+
+async function toggleManualPause(){
+  if(!autosendSettings){ alert('設定還沒載入,請稍後再試'); return; }
+  const next = !autosendSettings.manual_pause;
+  const { error } = await sb.from('autosend_settings').update({ manual_pause: next }).eq('id', autosendSettings.id);
+  if(error){ alert('操作失敗:'+error.message); return; }
+  autosendSettings.manual_pause = next;
+  updatePauseBtn();
+  renderAutosendBadge();
+}
+
+async function saveAutosendSettings(){
+  if(!autosendSettings){ alert('設定還沒載入,請稍後再試'); return; }
+  const weekday_start = document.getElementById('asWeekdayStart').value || '18:00';
+  const weekday_end = document.getElementById('asWeekdayEnd').value || '09:00';
+  const weekend_active = document.getElementById('asWeekendActive').checked;
+  const { error } = await sb.from('autosend_settings')
+    .update({ weekday_start, weekday_end, weekend_active })
+    .eq('id', autosendSettings.id);
+  if(error){ alert('儲存失敗:'+error.message); return; }
+  Object.assign(autosendSettings, { weekday_start, weekday_end, weekend_active });
+  renderAutosendBadge();
+  closeAutosendModal();
+}
+
+// ============================================================
+//  FAQ 管理:直接對 Supabase faqs 表做 CRUD,取代原本要另開一個
+//  FAQ管理.html 網站的做法 —— 客服就在這個系統裡登入一次,兩件事都能做。
+// ============================================================
+function switchView(view){
+  currentView = view;
+  document.getElementById('convView').style.display = view === 'conv' ? 'block' : 'none';
+  document.getElementById('faqView').style.display = view === 'faq' ? 'block' : 'none';
+  if(view === 'faq'){ faqs.length ? renderFaqList() : loadFaqs(); }
+}
+
+async function loadFaqs(){
+  const { data, error } = await sb.from('faqs').select('id,category,questions,answer')
+    .eq('company_id', me.company_id).order('category');
+  if(error){ alert('載入 FAQ 失敗:'+error.message); return; }
+  faqs = data || [];
+  renderFaqList();
+}
+
+function renderFaqList(){
+  const kw = (document.getElementById('faqSearch').value || '').trim();
+  let list = faqs;
+  if(kw){
+    list = faqs.filter(f =>
+      (f.category||'').includes(kw) || (f.answer||'').includes(kw) || (f.questions||[]).some(q=>q.includes(kw))
+    );
+  }
+  document.getElementById('faqCount').textContent = `${faqs.length} 筆` + (kw ? ` (符合 ${list.length})` : '');
+  document.getElementById('faqList').innerHTML = list.map(faqCardHtml).join('')
+    || '<div class="row" style="text-align:center;color:#aaa">找不到符合的 FAQ</div>';
+}
+
+function faqCardHtml(f){
+  const qs = (f.questions||[]).join('\n');
+  return `<div class="row faq-card" id="faq-card-${f.id}">
+    <div class="top">
+      <input class="cat" id="faq-cat-${f.id}" value="${esc(f.category||'')}" placeholder="分類">
+      <span class="time">分類</span>
+    </div>
+    <label>客人問法(一行一個)</label>
+    <textarea class="qbox" id="faq-q-${f.id}">${esc(qs)}</textarea>
+    <label>標準回覆</label>
+    <textarea class="abox" id="faq-a-${f.id}">${esc(f.answer||'')}</textarea>
+    <div class="row-btns">
+      <button class="mini primary" onclick="saveFaq('${f.id}')">儲存</button>
+      <button class="mini" onclick="deleteFaq('${f.id}')">刪除</button>
+      <span class="faq-saved" id="faq-saved-${f.id}"></span>
+    </div>
+  </div>`;
+}
+
+async function saveFaq(id){
+  const category = document.getElementById('faq-cat-'+id).value.trim() || '一般';
+  const questions = document.getElementById('faq-q-'+id).value.split('\n').map(s=>s.trim()).filter(Boolean);
+  const answer = document.getElementById('faq-a-'+id).value;
+  const savedEl = document.getElementById('faq-saved-'+id);
+  savedEl.textContent = '儲存中…';
+  if(String(id).startsWith('new-')){
+    const { data, error } = await sb.from('faqs')
+      .insert({ company_id: me.company_id, category, questions, answer }).select().single();
+    if(error){ savedEl.textContent=''; alert('儲存失敗:'+error.message); return; }
+    const i = faqs.findIndex(f=>f.id===id); if(i>=0) faqs[i]=data;
+    // 重新渲染,把這張卡片換成正式 id 產生的按鈕/欄位,避免下次點儲存又誤判成新增、多出一筆重複資料
+    renderFaqList();
+    const newSavedEl = document.getElementById('faq-saved-'+data.id);
+    if(newSavedEl){ newSavedEl.textContent = '✓ 已儲存'; setTimeout(()=>{ newSavedEl.textContent=''; }, 2000); }
+    return;
+  } else {
+    const { error } = await sb.from('faqs').update({ category, questions, answer }).eq('id', id);
+    if(error){ savedEl.textContent=''; alert('儲存失敗:'+error.message); return; }
+    const f = faqs.find(x=>x.id===id); if(f){ f.category=category; f.questions=questions; f.answer=answer; }
+  }
+  savedEl.textContent = '✓ 已儲存';
+  setTimeout(()=>{ savedEl.textContent=''; }, 2000);
+}
+
+async function deleteFaq(id){
+  if(!confirm('確定刪除這題 FAQ？')) return;
+  if(!String(id).startsWith('new-')){
+    const { error } = await sb.from('faqs').delete().eq('id', id);
+    if(error){ alert('刪除失敗:'+error.message); return; }
+  }
+  faqs = faqs.filter(f=>f.id!==id);
+  renderFaqList();
+}
+
+function addNewFaq(){
+  faqs.unshift({ id:'new-'+Date.now(), category:'一般', questions:[''], answer:'' });
+  document.getElementById('faqSearch').value = '';
+  renderFaqList();
+  window.scrollTo({ top:0, behavior:'smooth' });
+}
+
 // 切回這個分頁時,立刻刷新一次(不用等 15 秒)
 document.addEventListener('visibilitychange', ()=>{
-  if(!document.hidden && me && !isTyping()){ loadAll(); }
+  if(!document.hidden && me && !isTyping() && !hasExpandedConv()){ loadAll(); }
 });
 
 // ---------- 啟動:檢查是否已登入 ----------
