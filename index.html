@@ -181,6 +181,14 @@
       </div>
 
       <div class="pause-row">
+        <div class="chk-row">
+          <input type="checkbox" id="asFullAuto">
+          <label style="margin:0" for="asFullAuto">全自動回覆(不經人工核准)</label>
+        </div>
+        <div style="font-size:11px;color:#BA7517;margin-top:6px">⚠️ 開啟後,AI 生成的內容(包含公版回覆)會直接排入自動送出,不會等你按「送出給客人」。預設關閉,請確認沒問題再開啟。</div>
+      </div>
+
+      <div class="pause-row">
         <label style="margin-top:0">AI 生成草稿設定</label>
         <div style="font-size:11px;color:#aaa;margin-bottom:8px">選擇要用哪家 AI 生成回覆草稿,金鑰要自己去該平台申請、自己開通付費,不會經過我們。</div>
         <select id="aiProvider" onchange="updateAiApplyLink()" style="width:100%;padding:9px 11px;border:1px solid #ddd;border-radius:8px;font-size:14px;font-family:inherit">
@@ -610,6 +618,7 @@ function openAutosendModal(){
   document.getElementById('asWeekdayStart').value = (s && s.weekday_start) || '18:00';
   document.getElementById('asWeekdayEnd').value = (s && s.weekday_end) || '09:00';
   document.getElementById('asWeekendActive').checked = s ? !!s.weekend_active : true;
+  document.getElementById('asFullAuto').checked = s ? !!s.full_auto_enabled : false;
   document.getElementById('aiProvider').value = (s && s.ai_provider) || 'openai';
   document.getElementById('aiApiKey').value = (s && s.ai_api_key) || '';
   updateAiApplyLink();
@@ -652,13 +661,14 @@ async function saveAutosendSettings(){
   const weekday_start = document.getElementById('asWeekdayStart').value || '18:00';
   const weekday_end = document.getElementById('asWeekdayEnd').value || '09:00';
   const weekend_active = document.getElementById('asWeekendActive').checked;
+  const full_auto_enabled = document.getElementById('asFullAuto').checked;
   const ai_provider = document.getElementById('aiProvider').value;
   const ai_api_key = document.getElementById('aiApiKey').value.trim() || null;
   const { error } = await sb.from('autosend_settings')
-    .update({ weekday_start, weekday_end, weekend_active, ai_provider, ai_api_key })
+    .update({ weekday_start, weekday_end, weekend_active, full_auto_enabled, ai_provider, ai_api_key })
     .eq('id', autosendSettings.id);
   if(error){ alert('儲存失敗:'+error.message); return; }
-  Object.assign(autosendSettings, { weekday_start, weekday_end, weekend_active, ai_provider, ai_api_key });
+  Object.assign(autosendSettings, { weekday_start, weekday_end, weekend_active, full_auto_enabled, ai_provider, ai_api_key });
   renderAutosendBadge();
   closeAutosendModal();
 }
