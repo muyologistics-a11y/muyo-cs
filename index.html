@@ -40,7 +40,6 @@
   .row-top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
   .shop{font-size:12px;padding:2px 8px;border-radius:6px;background:#f1efe8;color:#5f5e5a}
   .buyer{font-size:12px;padding:2px 8px;border-radius:6px;background:#E6F1FB;color:#185FA5}
-  .bid{font-size:12px;color:#aaa;font-family:ui-monospace,monospace}
   .copy{font-size:11px;padding:2px 8px;border-radius:6px;border:1px solid #ddd;background:#fff;cursor:pointer}
   .copy:hover{background:#f0edff;border-color:#7F77DD}
   .copy.copied{background:#E1F5EE;color:#0F6E56;border-color:#9FE1CB}
@@ -495,7 +494,7 @@ function convHtml(c){
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span class="shop">${esc(shopName(c.shop_id))}</span>
         <span class="buyer">👤 ${esc(c.buyer_name||'買家')}</span>
-        ${c.buyer_id?`<span class="bid">ID: ${esc(c.buyer_id)}</span><button class="copy" onclick="copyId('${esc(c.buyer_id)}',this)">複製 ID</button>`:''}
+        ${c.buyer_name?`<button class="copy" onclick="copyId('${esc(c.buyer_name)}',this)">複製帳號</button>`:''}
         ${many?`<span class="cnt">${c.count} 則</span>`:''}
       </div>
       <div class="meta"><span class="time">${fmtTime(c.lastAt)}</span>${stHtml}</div>
