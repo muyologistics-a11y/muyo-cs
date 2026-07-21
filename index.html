@@ -505,7 +505,7 @@ function convHtml(c){
         <span class="buyer">👤 ${esc(c.buyer_name||'買家')}</span>
         ${c.buyer_name?`<button class="copy" onclick="copyId('${esc(c.buyer_name)}',this)">複製帳號</button>`:''}
         ${c.item_name?`<span class="item">🛍️ ${esc(c.item_name)}</span>`:''}
-        ${c.is_auto_reply?`<span class="autoreply">🤖 買家自動回覆,可能不需要理會</span>`:''}
+        ${c.is_auto_reply?`<span class="autoreply">🤖 買家自動回覆</span>`:''}
         ${many?`<span class="cnt">${c.count} 則</span>`:''}
       </div>
       <div class="meta"><span class="time">${fmtTime(c.lastAt)}</span>${stHtml}</div>
