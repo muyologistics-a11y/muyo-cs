@@ -134,6 +134,7 @@
     <div id="convView">
       <div class="stats" id="stats"></div>
       <div class="tabs" id="tabs"></div>
+      <div class="tabs" id="replyTabs" style="margin-top:6px"></div>
       <div id="list"><div class="loading">載入中…</div></div>
       <div class="foot" id="foot"></div>
     </div>
@@ -215,6 +216,7 @@ let convs = [];               // 分組後的對話陣列
 let expandedConvs = {};       // 記住哪些對話被展開(點開看全部)
 let currentShop = '全部';
 let statusFilter = null;     // 點「待處理對話」統計卡時設成 'pending',只看待處理的對話
+let replyFilter = '';        // ''=全部, 'replied'=已回覆, 'unreplied'=未回覆
 let autoTimer = null;        // 自動刷新計時器
 const AUTO_SECONDS = 15;     // 每幾秒自動刷新一次
 let faqs = [];                // FAQ 管理分頁的資料
@@ -398,11 +400,22 @@ function render(){
   if(statusFilter==='pending'){ tabs += `<span class="tab on" style="background:#BA7517;border-color:#BA7517" onclick="togglePendingFilter()">✕ 只看待處理</span>`; }
   document.getElementById('tabs').innerHTML = tabs;
 
+  // 已回覆/未回覆分頁(以目前賣場篩選後的對話為基準計算數字)
+  const shopScoped = currentShop==='全部' ? convs : convs.filter(c=>c.shop_id===currentShop);
+  const repliedCount = shopScoped.filter(c=>isReplied(c.status)).length;
+  const unrepliedCount = shopScoped.length - repliedCount;
+  document.getElementById('replyTabs').innerHTML =
+    replyTab('全部', shopScoped.length, '') +
+    replyTab('未回覆', unrepliedCount, 'unreplied') +
+    replyTab('已回覆', repliedCount, 'replied');
+
   // 對話列表
   let list = convs;
   if(currentShop!=='全部'){ list = convs.filter(c=>c.shop_id===currentShop); }
   if(statusFilter==='pending'){ list = list.filter(c=>c.status==='pending'); }
-  const emptyMsg = statusFilter==='pending' ? '目前沒有待處理的對話 🎉' : '這裡目前沒有對話 ✨';
+  if(replyFilter==='replied'){ list = list.filter(c=>isReplied(c.status)); }
+  if(replyFilter==='unreplied'){ list = list.filter(c=>!isReplied(c.status)); }
+  const emptyMsg = statusFilter==='pending' ? '目前沒有待處理的對話 🎉' : (replyFilter==='unreplied' ? '目前沒有未回覆的對話 🎉' : (replyFilter==='replied' ? '目前沒有已回覆的對話' : '這裡目前沒有對話 ✨'));
   document.getElementById('list').innerHTML = list.length
     ? list.map(convHtml).join('')
     : `<div class="row" style="text-align:center;color:#aaa">${emptyMsg}</div>`;
@@ -416,6 +429,9 @@ function stat(l,v,color,onclick,active){
 function tab(name,n,id){ const key=id||name; const on=currentShop===key?'on':''; return `<span class="tab ${on}" onclick="selShop('${key}')">${esc(name)} ${n}</span>`; }
 function togglePendingFilter(){ statusFilter = statusFilter==='pending' ? null : 'pending'; render(); }
 function selShop(s){ currentShop=s; render(); }
+function isReplied(status){ return status==='done' || status==='auto_sent'; }
+function replyTab(name,n,key){ const on=replyFilter===key?'on':''; return `<span class="tab ${on}" onclick="selReplyFilter('${key}')">${esc(name)} ${n}</span>`; }
+function selReplyFilter(key){ replyFilter=key; render(); }
 function toggleConv(key){ expandedConvs[key]=!expandedConvs[key]; render(); }
 
 function convHtml(c){
