@@ -41,6 +41,7 @@
   .shop{font-size:12px;padding:2px 8px;border-radius:6px;background:#f1efe8;color:#5f5e5a}
   .buyer{font-size:12px;padding:2px 8px;border-radius:6px;background:#E6F1FB;color:#185FA5}
   .item{font-size:12px;padding:2px 8px;border-radius:6px;background:#FBF0E0;color:#8A5A1E}
+  .autoreply{font-size:12px;padding:2px 8px;border-radius:6px;background:#EFEFEF;color:#777}
   .copy{font-size:11px;padding:2px 8px;border-radius:6px;border:1px solid #ddd;background:#fff;cursor:pointer}
   .copy:hover{background:#f0edff;border-color:#7F77DD}
   .copy.copied{background:#E1F5EE;color:#0F6E56;border-color:#9FE1CB}
@@ -356,6 +357,7 @@ function groupIntoConversations(list){
     c.reply_text = lastReplyText(c);    // 若已回覆,最後一則回覆內容
     c.ai_draft = c.latest.ai_draft || '';
     c.item_name = itemName(c);          // 這段對話裡最新一筆有帶到的商品名稱
+    c.is_auto_reply = isAutoReplyConv(c); // 最新一則是不是買家自己的自動回覆
   }
   result.sort((a,b)=> new Date(b.lastAt) - new Date(a.lastAt));  // 對話新到舊
   return result;
@@ -385,6 +387,7 @@ function itemName(c){
   for(let i=c.items.length-1;i>=0;i--){ if(c.items[i].item_name) return c.items[i].item_name; }
   return null;
 }
+function isAutoReplyConv(c){ return !!c.latest.is_auto_reply; }
 
 function shopName(id){ const s=shops.find(x=>x.id===id); return s?s.name:'—'; }
 
@@ -502,6 +505,7 @@ function convHtml(c){
         <span class="buyer">👤 ${esc(c.buyer_name||'買家')}</span>
         ${c.buyer_name?`<button class="copy" onclick="copyId('${esc(c.buyer_name)}',this)">複製帳號</button>`:''}
         ${c.item_name?`<span class="item">🛍️ ${esc(c.item_name)}</span>`:''}
+        ${c.is_auto_reply?`<span class="autoreply">🤖 買家自動回覆,可能不需要理會</span>`:''}
         ${many?`<span class="cnt">${c.count} 則</span>`:''}
       </div>
       <div class="meta"><span class="time">${fmtTime(c.lastAt)}</span>${stHtml}</div>
