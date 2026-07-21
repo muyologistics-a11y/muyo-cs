@@ -480,7 +480,7 @@ function convHtml(c){
     }
   } else { // pending
     stHtml=`<span class="st pending">待處理</span>`;
-    acts=`<div class="acts"><button class="mini primary" onclick="claim('${c.key}')">我來處理</button></div>`;
+    acts=`<div class="acts"><button class="mini primary" onclick="claim('${c.key}')">我來處理</button>${c.is_auto_reply?`<button class="mini" onclick="markAsReplied('${c.key}')">標記為已回覆</button>`:''}</div>`;
   }
 
   // 對話裡的訊息:預設收起,只顯示最新一句;點「展開」看全部
@@ -543,6 +543,14 @@ async function release(key){
   const c = convByKey(key); if(!c) return;
   const ids = convMsgIds(c);
   const { error } = await sb.from('messages').update({ status:'pending', handler_id:null }).in('id', ids);
+  if(error){ alert('操作失敗:'+error.message); return; }
+  await loadAll();
+}
+// 買家自動回覆不需要真的打字回覆,這裡直接標記完成,不用走「我來處理→送出」那套流程。
+async function markAsReplied(key){
+  const c = convByKey(key); if(!c) return;
+  const ids = convMsgIds(c);
+  const { error } = await sb.from('messages').update({ status:'done', handler_id:me.id }).in('id', ids);
   if(error){ alert('操作失敗:'+error.message); return; }
   await loadAll();
 }
