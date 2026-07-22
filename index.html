@@ -496,8 +496,9 @@ function convHtml(c){
         <span class="btext">${esc(m.customer_message)}</span>
       </div>`;
     }).join('');
-    // 若已回覆,附上回覆內容
-    if(c.reply_text){ bubbles += `<div class="bubble reply-bubble"><span class="btime">已回覆</span><span class="btext">${esc(c.reply_text)}</span></div>`; }
+    // 若已回覆,附上回覆內容。注意:reply_text 曾核准過就會留著,就算後來送出失敗、
+    // 狀態退回處理中也不會清掉,所以一定要「狀態真的是已回覆」才顯示,不然會誤以為送成功了。
+    if(isReplied(c.status) && c.reply_text){ bubbles += `<div class="bubble reply-bubble"><span class="btime">已回覆</span><span class="btext">${esc(c.reply_text)}</span></div>`; }
   }
 
   const toggleBtn = many
@@ -521,7 +522,7 @@ function convHtml(c){
     </div>
     <div class="latest-line"><span class="q">${latestText}</span> ${toggleBtn}</div>
     ${isOpen?`<div class="bubbles">${bubbles}</div>`:''}
-    ${(!isOpen && c.reply_text)?`<div class="ans">已回覆:「${esc(c.reply_text)}」</div>`:''}
+    ${(!isOpen && isReplied(c.status) && c.reply_text)?`<div class="ans">已回覆:「${esc(c.reply_text)}」</div>`:''}
     ${(!isOpen && c.status==='auto_sent' && c.ai_draft)?`<div class="ans">AI 回:${esc(c.ai_draft)}</div>`:''}
     ${acts}
   </div>`;
