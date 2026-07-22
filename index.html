@@ -473,14 +473,15 @@ function convHtml(c){
         <div class="acts">
           <button class="mini primary send-btn" onclick="sendReply('${c.key}', this)">送出給客人</button>
           <button class="mini" onclick="release('${c.key}')">放開(交給別人)</button>
+          <button class="mini" onclick="markAsReplied('${c.key}')">標記為已回覆</button>
         </div>
       </div>`;
     } else {
-      acts=`<div class="acts" style="color:#aaa;font-size:13px">由 ${esc(staffMap[c.handler_id]||'其他同事')} 處理中</div>`;
+      acts=`<div class="acts" style="color:#aaa;font-size:13px">由 ${esc(staffMap[c.handler_id]||'其他同事')} 處理中 <button class="mini" onclick="markAsReplied('${c.key}')">標記為已回覆</button></div>`;
     }
   } else { // pending
     stHtml=`<span class="st pending">待處理</span>`;
-    acts=`<div class="acts"><button class="mini primary" onclick="claim('${c.key}')">我來處理</button>${c.is_auto_reply?`<button class="mini" onclick="markAsReplied('${c.key}')">標記為已回覆</button>`:''}</div>`;
+    acts=`<div class="acts"><button class="mini primary" onclick="claim('${c.key}')">我來處理</button><button class="mini" onclick="markAsReplied('${c.key}')">標記為已回覆</button></div>`;
   }
 
   // 對話裡的訊息:預設收起,只顯示最新一句;點「展開」看全部
@@ -546,7 +547,8 @@ async function release(key){
   if(error){ alert('操作失敗:'+error.message); return; }
   await loadAll();
 }
-// 買家自動回覆不需要真的打字回覆,這裡直接標記完成,不用走「我來處理→送出」那套流程。
+// 手動標記已回覆:給已經在蝦皮後台直接回過、但系統沒偵測到而卡在未回覆的對話用,
+// 直接標記完成,不用走「我來處理→送出」那套流程。
 async function markAsReplied(key){
   const c = convByKey(key); if(!c) return;
   const ids = convMsgIds(c);
