@@ -159,15 +159,15 @@
   <div id="autosendModal" class="modal-mask" style="display:none" onclick="if(event.target===this)closeAutosendModal()">
     <div class="modal">
       <h2>⚙️ 自動送出排程設定</h2>
-      <div style="font-size:12px;color:#888">點「送出給客人」核准後,實際送出的動作交給你電腦上跑的自動化腳本,依這裡設定的時段運作。</div>
+      <div style="font-size:12px;color:#888">點「送出給客人」會直接送出給客人。這裡的排程時段,是給「全自動回覆」開關用的:時段內 AI 生成的內容會自動核准送出,不用客服核准;時段外一律照樣留給客服人工審核。</div>
 
-      <label>平日(週一~週五)自動運作時段</label>
+      <label>平日(週一~週五)全自動運作時段</label>
       <div class="row2">
         <input type="time" id="asWeekdayStart">
         <span style="color:#aaa">～(隔天)</span>
         <input type="time" id="asWeekdayEnd">
       </div>
-      <div style="font-size:11px;color:#aaa;margin-top:4px">例如 18:00～09:00,代表平日晚上到隔天早上自動運作,白天客服上班時段不運作。</div>
+      <div style="font-size:11px;color:#aaa;margin-top:4px">例如 18:00～09:00,代表平日晚上到隔天早上是全自動時段,白天客服上班時段一律要人工審核。</div>
 
       <div class="chk-row">
         <input type="checkbox" id="asWeekendActive">
@@ -457,10 +457,10 @@ function convHtml(c){
   if(c.status==='auto_sent'){ stHtml=`<span class="st auto_sent">已自動回覆</span>`; }
   else if(c.status==='done'){ stHtml=`<span class="st done">已回覆 · ${esc(staffMap[c.handler_id]||'')}</span>`; }
   else if(c.status==='approved_to_send'){
-    stHtml=`<span class="st approved_to_send">⏳ 已核准,排隊自動送出中</span>`;
+    stHtml=`<span class="st approved_to_send">⏳ AI 已自動核准,排隊等時段送出</span>`;
     acts=`<div class="acts" style="color:#aaa;font-size:13px;display:block">
       <div>已核准內容:「${esc(c.reply_text||'')}」</div>
-      <div style="margin-top:4px">系統會在約 20~30 秒內自動送出給客人,不是立刻送出,請不用重複點擊。</div>
+      <div style="margin-top:4px">這是「全自動回覆」時段內由系統自動核准的內容,會依排程時段自動送出給客人(不是立刻,要看目前在不在自動運作時段內)。</div>
       <button class="mini" style="margin-top:6px" onclick="claim('${c.key}')">撤回改編輯</button>
     </div>`;
   }
@@ -557,9 +557,10 @@ async function markAsReplied(key){
   if(error){ alert('操作失敗:'+error.message); return; }
   await loadAll();
 }
-// ★ 這個函式「不會」直接送到蝦皮 —— 蝦皮官方送訊 API 不開放給台灣開發者。
-//   點下去只是把核准後的內容寫回資料庫、標記 status='approved_to_send',
-//   真正送出的動作交給另一支獨立跑的瀏覽器自動化腳本輪詢處理。
+// ★ 客服人工核准送出:直接呼叫後端 /api/send-reply 真的送到蝦皮,不會再卡進
+//   approved_to_send 排隊等排程處理——那個狀態現在只留給「全自動回覆」時段內
+//   由 /auto-send-tick 排程送出的訊息用,兩條路互不干擾。
+//   送出前加一個幾秒的隨機小延遲,單純是不想讓「按下去→瞬間送達」太過機械式。
 async function sendReply(key, btn){
   const c = convByKey(key); if(!c) return;
   // 用 CSS.escape 讓含冒號/點的 key 也能安全查詢
@@ -567,15 +568,37 @@ async function sendReply(key, btn){
   const text = (box?box.value:'').trim();
   if(!text){ alert('回覆內容不能空白'); return; }
 
+  const shop = shops.find(s=>s.id===c.shop_id);
+  if(!shop || !shop.shopee_shop_id){ alert('找不到這個賣場的蝦皮 shop_id,無法送出'); return; }
+
   if(btn){ btn.disabled=true; btn.textContent='處理中…'; }
+  await new Promise(r=>setTimeout(r, 2000 + Math.random()*4000));
+
+  let result;
+  try{
+    const r = await fetch(`${BACKEND}/api/send-reply`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ shopee_shop_id: shop.shopee_shop_id, conversation_id: c.convId, to_id: c.buyer_id, message: text }),
+    });
+    result = await r.json();
+  }catch(e){
+    if(btn){ btn.disabled=false; btn.textContent='送出給客人'; }
+    alert('送出失敗(網路錯誤):'+e.message);
+    return;
+  }
+  if(!result.ok){
+    if(btn){ btn.disabled=false; btn.textContent='送出給客人'; }
+    alert('送出失敗:'+(result.error||'未知錯誤')+(result.message?('\n'+result.message):''));
+    return;
+  }
 
   const ids = convMsgIds(c);
   const lastId = c.latest.id;
-  const r1 = await sb.from('messages').update({ status:'approved_to_send', handler_id:me.id }).in('id', ids);
-  if(btn){ btn.disabled=false; btn.textContent='送出給客人'; }
-  if(r1.error){ alert('核准失敗:'+r1.error.message); return; }
+  const now = new Date().toISOString();
+  const r1 = await sb.from('messages').update({ status:'done', handler_id:me.id, handled_at: now }).in('id', ids);
+  if(r1.error){ alert('已送達客人,但更新狀態失敗:'+r1.error.message); }
   const r2 = await sb.from('messages').update({ reply_text:text }).eq('id', lastId);
-  if(r2.error){ alert('已核准,但記錄回覆內容失敗:'+r2.error.message); }
+  if(r2.error){ alert('已送達客人,但記錄回覆內容失敗:'+r2.error.message); }
   await loadAll();
 }
 
@@ -588,9 +611,9 @@ function copyId(text,btn){
 
 // ============================================================
 //  自動送出排程狀態/設定
-//  ★ isWithinSchedule 的判斷邏輯要跟 muyo-shopee-autosend/send-worker.js
+//  ★ isWithinSchedule 的判斷邏輯要跟後端 muyo-cs-backend/api/[...path].js
 //    裡的同名函式保持一致,這裡只是給客服「預覽現在該不該運作」用,
-//    實際擋不擋送出是腳本那邊自己再判斷一次。
+//    實際擋不擋全自動核准是後端 tryHandleChat 自己再判斷一次。
 // ============================================================
 function isWithinSchedule(s, now){
   now = now || new Date();
@@ -616,7 +639,9 @@ function renderAutosendBadge(){
 
   const scheduledOn = isWithinSchedule(s);
   const heartbeatAgeMs = s.last_heartbeat_at ? (Date.now() - new Date(s.last_heartbeat_at).getTime()) : Infinity;
-  const heartbeatStale = heartbeatAgeMs > 90*1000; // 超過 90 秒沒回報,視為腳本可能沒在跑
+  // 現在改由外部免費排程服務每隔幾分鐘呼叫後端 /auto-send-tick 一次(不是每 90 秒),
+  // 門檻放寬到 10 分鐘,允許漏跳一兩次也不會誤判成「沒回應」,抓的是真的停擺很久的情況。
+  const heartbeatStale = heartbeatAgeMs > 10*60*1000;
 
   if(!scheduledOn){ el.className='as-badge off'; el.textContent='⚪ 排程外,暫停中'; return; }
   if(heartbeatStale){ el.className='as-badge warn'; el.textContent='🟡 該運作但腳本沒回應,請檢查'; return; }
