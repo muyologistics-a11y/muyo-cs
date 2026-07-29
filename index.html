@@ -557,10 +557,17 @@ async function markAsReplied(key){
   if(error){ alert('操作失敗:'+error.message); return; }
   await loadAll();
 }
+// 依文字長度模擬「閱讀+打字」所需時間,字越多延遲越久(還會加上隨機的思考時間),
+// 讓送出不是瞬間發生,體感上更像真人在打字,不是機械式秒回。上限 8 秒,避免客服等太久。
+function typingDelayMs(text){
+  const len = String(text||'').length;
+  const readingMs = 800 + Math.random()*1500;
+  const typingMs = len * (60 + Math.random()*50);
+  return Math.min(readingMs + typingMs, 8000);
+}
 // ★ 客服人工核准送出:直接呼叫後端 /api/send-reply 真的送到蝦皮,不會再卡進
 //   approved_to_send 排隊等排程處理——那個狀態現在只留給「全自動回覆」時段內
 //   由 /auto-send-tick 排程送出的訊息用,兩條路互不干擾。
-//   送出前加一個幾秒的隨機小延遲,單純是不想讓「按下去→瞬間送達」太過機械式。
 async function sendReply(key, btn){
   const c = convByKey(key); if(!c) return;
   // 用 CSS.escape 讓含冒號/點的 key 也能安全查詢
@@ -572,7 +579,7 @@ async function sendReply(key, btn){
   if(!shop || !shop.shopee_shop_id){ alert('找不到這個賣場的蝦皮 shop_id,無法送出'); return; }
 
   if(btn){ btn.disabled=true; btn.textContent='處理中…'; }
-  await new Promise(r=>setTimeout(r, 2000 + Math.random()*4000));
+  await new Promise(r=>setTimeout(r, typingDelayMs(text)));
 
   let result;
   try{
